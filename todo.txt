@@ -1,0 +1,19 @@
+TODO: tournament management
+- for each matchup, get a prediction and propogate it
+- Tournament class? spawns Game class for each level or something
+- outcome can be completely seperate from tournament, tournament just manages the state
+- expose some attribute that holds the current unplayed games so we can loop through them and prediction
+- needs a method to update the outcome of the game, then that updates the next matchups...
+
+TODO: make predictions: LLM
+- just send the current matchup and some amount of context, return only the expected winner and a confidence or something?
+- the context/details about teams should be held seperately somewhere, so we just access it with the name of the team
+- make sure we set seed... or should we? could set it as a param for the prediction function, alternate in simulation
+- features:
+    - team details
+    - current tournament state
+    - player details
+
+TODO: tournament simulator
+- monte carlo style
+- takes prediction_strategy callable param
