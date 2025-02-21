@@ -13,7 +13,14 @@ TODO: make predictions: LLM
     - team details
     - current tournament state
     - player details
+- mixture of experts? randomly choose one model each time?
 
 TODO: tournament simulator
 - monte carlo style
-- takes prediction_strategy callable param
+- takes prediction_strategy callable param, Tournament class and params
+- prediction_details param to log confidence, context, etc...
+- logging:
+    - cols: trial, round, game, results and details, tournament details
+
+TODO: pypi package?
+- no 'tournaments' package currently...
