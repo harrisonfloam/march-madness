@@ -188,7 +188,7 @@ def ncaa_round_matchups(tournament: "Tournament") -> List[Matchup]:
             
             # Iterate over chunks of the bracket
             # In round 1, winners must come from seeds {16, 1, 8, 9}...
-            for round_bracket in itertools.batched(ncaa_bracket_progression, (tournament.current_round)**2):
+            for round_bracket in itertools.batched(ncaa_bracket_progression, 2**tournament.current_round):
                 round_bracket_set = set(round_bracket)
                 matchup = tuple(team for team in region_winners if team["seed"] in round_bracket_set)
                 matchups.append(tuple(matchup))
