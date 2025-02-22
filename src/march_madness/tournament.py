@@ -132,76 +132,75 @@ class Tournament:
     def print_tournament_state(self):
         pass
 
-# Matchup strategies
-def ncaa_initial_matchups(tournament: "Tournament") -> List[Matchup]:
-    """
-    Generates first-round matchups using NCAA-style seeding.
-    
-    In each region, the highest seed plays the lowest, second-highest plays second-lowest: 
-    1 vs. 16, 2 vs. 15, etc.
-    """
-    matchups = []
-    regions = set(team["region"] for team in tournament.teams.values())  # All original regions
+class TournamentSimulator:
+    def __init__(self, num_trials: int, tournament_class: type, tournament_params: Dict[str, Any], 
+                 prediction_strategy: Callable[["Game", "Tournament", int], Prediction], prediction_details: bool = False,
+                 seed: int = 42):
+        """
+        Monte Carlo tournament simulator.
 
-    for region in regions:
-        region_teams = sorted(
-            [team for team in tournament.teams.values() if team["region"] == region],
-            key=lambda x: x["seed"]
-        )
-        for i in range(len(region_teams) // 2):
-            matchups.append((region_teams[i], region_teams[-(i + 1)]))  # Highest vs. Lowest
-    return matchups
+        Args:
+            num_trials: Number of tournament simulations to run.
+            tournament_class: The Tournament class to instantiate.
+            tournament_params: Dictionary of parameters to initialize Tournament.
+            prediction_strategy: Callable that predicts the winner of a game.
+            prediction_details: Whether to log prediction confidence and context.
+        """
+        self.num_trials = num_trials
+        self.tournament_class = tournament_class
+        self.tournament_params = tournament_params
+        self.prediction_strategy = prediction_strategy
+        self.prediction_details = prediction_details    #TODO: rework this... shouldnt be bool
+        
+        # RNG
+        self.seed = seed
+        self.seeds = self._generate_seeds()
+        
+        self.results = []
+        
+    def _generate_seeds(self) -> List[int]:
+        """Generate random seeds for each trial for reproducibility."""
+        seed_max = 2**32 - 1
+        np.random.seed(self.seed)
+        return np.random.randint(0, seed_max, size=self.num_trials).tolist()
 
+    def run(self, verbose: bool = True):
+        """Runs multiple tournament simulations and logs results."""
+        trials = zip(range(1, self.num_trials+1), self.seeds)
+        pbar = tqdm(trials, total=self.num_trials, disable=not verbose)
+        for trial, trial_seed in pbar:
+            tournament = self.tournament_class(**self.tournament_params)
+            rng = np.random.default_rng(trial_seed)  # One RNG per trial
 
-def ncaa_round_matchups(tournament: "Tournament") -> List[Matchup]:
-    """
-    Generates next-round matchups using NCAA-style progression.
-    
-    Winners are paired in order defined by the bracket structure: 
-    - Winner of (1 vs. 16) faces winner of (8 vs. 9)
-    - Winner of (5 vs. 12) faces winner of (4 vs. 13), etc.
-    - East plays West, South plays Midwest
-    """
-    # NCAA-defined bracket structure for regional rounds
-    ncaa_bracket_progression = [
-        1, 16, 8, 9,
-        5, 12, 4, 13,
-        6, 11, 3, 14,
-        7, 10, 2, 15
-    ]
-    # Final Four region matchups
-    inter_region_matchups = [
-        ("East", "West"),
-        ("South", "Midwest")
-    ]
-
-    # Get winners from last round
-    prev_round_games = [game for game in tournament.played_games if game.winner and game.round_number == tournament.current_round-1]
-    num_winners = len(prev_round_games)
-    regions = set(team["region"] for team in tournament.teams.values())  # All original regions
-    matchups = []
-
-    # Regional rounds
-    if num_winners > len(regions):
-        for region in regions:
-            region_winners = [tournament.teams[game.winner] for game in prev_round_games if game.winner_details["region"] == region]
+            while tournament.get_unplayed_games():
+                for game in tournament.get_unplayed_games():
+                    winner, details = self.prediction_strategy(tournament, game, rng)
+                    tournament.update_game_result(game, winner)
+                    
+                    result = {
+                        "trial": trial,
+                        "round": game.round_number,
+                        "team1": game.team1,
+                        "team2": game.team2,
+                        "winner": winner,
+                        "details": details if self.prediction_details else None,
+                        "tournament_state": self._get_tournament_snapshot(tournament)
+                    }
+                    self.results.append(result)
             
-            # Iterate over chunks of the bracket
-            # In round 1, winners must come from seeds {16, 1, 8, 9}...
-            for round_bracket in itertools.batched(ncaa_bracket_progression, 2**tournament.current_round):
-                round_bracket_set = set(round_bracket)
-                matchup = tuple(team for team in region_winners if team["seed"] in round_bracket_set)
-                matchups.append(tuple(matchup))
-                
-    # Final Four
-    elif num_winners == len(regions):
-        winners_by_region = {tournament.teams[game.winner]["region"]: tournament.teams[game.winner] for game in prev_round_games}
-        for region1, region2 in inter_region_matchups:
-            matchups.append((winners_by_region[region1], winners_by_region[region2]))
-            
-    # Championship
-    else:
-        winners = tuple(tournament.teams[game.winner] for game in prev_round_games)
-        matchups.append(winners)
+            postfix = {
+                "winner": tournament.winner
+            }
+            pbar.set_postfix(postfix)
 
-    return matchups
+    def _get_tournament_snapshot(self, tournament) -> List[Tuple[int, str, str, str]]:
+        """Returns a structured snapshot of the tournament state."""
+        #TODO: rework
+        return [
+            (game.round_number, game.team1, game.team2, game.winner)
+            for game in tournament.played_games
+        ]
+    
+    def to_dataframe(self):
+        """Returns the logged results as a Pandas DataFrame."""
+        return pd.DataFrame(self.results)
