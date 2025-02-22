@@ -1,3 +1,5 @@
+"""Tournament class definition."""
+
 from typing import List, Callable, Dict, Any, Tuple
 from math import log2
 import numpy as np
@@ -129,58 +131,8 @@ class Tournament:
 
     def print_tournament_state(self):
         pass
-    
-class TournamentSimulator:
-    def __init__(self, num_trials: int, tournament_class: type, tournament_params: Dict[str, Any], 
-                 prediction_strategy: Callable, prediction_details: bool = False):
-        """
-        Monte Carlo tournament simulator.
 
-        Args:
-            num_trials: Number of tournament simulations to run.
-            tournament_class: The Tournament class to instantiate.
-            tournament_params: Dictionary of parameters to initialize Tournament.
-            prediction_strategy: Callable that predicts the winner of a game.
-            prediction_details: Whether to log prediction confidence and context.
-        """
-        self.num_trials = num_trials
-        self.tournament_class = tournament_class
-        self.tournament_params = tournament_params
-        self.prediction_strategy = prediction_strategy
-        self.prediction_details = prediction_details
-        self.results_log = []
-        # TODO: seed... generate seeds for each trial
-        
-
-    def run(self):
-        """Runs multiple tournament simulations and logs results."""
-        for trial in range(1, self.num_trials + 1):
-            print(f"Starting Trial {trial}")
-            tournament = self.tournament_class(**self.tournament_params)
-
-            while tournament.get_unplayed_games():
-                for game in tournament.get_unplayed_games():
-                    winner, details = self.prediction_strategy(game)
-                    tournament.update_game_result(game, winner)
-
-                    # Log each game result
-                    self.results_log.append({
-                        "trial": trial,
-                        "round": game.round_number,
-                        "game": f"{game.team1} vs {game.team2}",
-                        "result": f"{winner} wins",
-                        "details": details if self.prediction_details else None,
-                        "tournament_state": self._get_tournament_snapshot(tournament)
-                    })
-
-    def _get_tournament_snapshot(self, tournament):
-        """Returns a structured snapshot of the tournament state."""
-        return [(game.round_number, game.team1, game.team2, game.winner) for r, games in tournament.rounds.items() for game in games]
-
-    def to_dataframe(self):
-        """Returns the logged results as a Pandas DataFrame."""
-        return pd.DataFrame(self.results_log)
-
+# Matchup strategies
 def ncaa_initial_matchups(tournament: "Tournament") -> List[Matchup]:
     """
     Generates first-round matchups using NCAA-style seeding.
