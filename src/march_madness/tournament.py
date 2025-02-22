@@ -2,8 +2,11 @@ from typing import List, Callable, Dict, Any, Tuple
 from math import log2
 import numpy as np
 import pandas as pd
-import random
 import itertools
+
+
+Team = Dict[str, Any]  # Team dictionary
+Matchup = Tuple[Team, Team]  # Matchup of teams
 
 
 class Game:
@@ -25,9 +28,9 @@ class Game:
         self.winner_details = self.team1_details if self.winner == self.team1 else self.team2_details
 
 class Tournament:
-    def __init__(self, teams: Any, 
-                 initial_matchup_strategy: Callable[["Tournament"], List[Tuple[str, str]]] = None,
-                 round_matchup_strategy: Callable[["Tournament"], List[Tuple[str, str]]] = None):
+    def __init__(self, teams: List[Team], 
+                 initial_matchup_strategy: Callable[["Tournament"], List[Matchup]] = None,
+                 round_matchup_strategy: Callable[["Tournament"], List[Matchup]] = None):
         """
         Initializes a tournament.
         
@@ -67,7 +70,7 @@ class Tournament:
                 raise ValueError(f"Missing required fields {missing_fields} in team entry: {team}")
 
                 
-    def _process_teams(self, teams: Any) -> List[Dict[str, Any]]:
+    def _process_teams(self, teams: Any) -> Dict[str, Team]:
         """Converts a DataFrame or list of dicts into a standard format."""
         if isinstance(teams, pd.DataFrame):
             teams = teams.to_dict(orient="records")  # Convert DataFrame to list of dicts
@@ -84,7 +87,7 @@ class Tournament:
             raise ValueError("Initial matchup strategy did not return any games. Check the strategy function.")
         
         for team1, team2 in matchups:
-            game = Game(team1["team"], team2["team"], 1, team1_details=team1, team2_details=team2)
+            game = Game(team1, team2, 1)
             self.unplayed_games.append(game)
 
     def update_game_result(self, game: Game, winner: str, verbose: bool = False):
@@ -96,8 +99,7 @@ class Tournament:
         # If final round, set the tournament winner
         if self.current_round == self.num_rounds:
             self.winner = winner
-            if verbose:
-                print(f"Tournament winner: {winner}")
+
         # If all games for this round are completed, advance the round
         elif len(self.unplayed_games) == 0:
             self.create_next_round()
@@ -124,22 +126,7 @@ class Tournament:
         return self.unplayed_games.copy()   # Return as copy so future changes don't affect iterable use
 
     def print_tournament_state(self):
-        """Displays the current state of the tournament in a structured format."""
-        #TODO: improve this or remove it
-        unplayed_games = [
-            [game.round_number, game.team1, game.team2, game.winner]
-            for game in self.unplayed_games
-        ]
-        
-        played_games = [
-            [game.round_number, game.team1, game.team2, game.winner]
-            for game in self.played_games
-        ]
-
-        unplayed_games_df = pd.DataFrame(unplayed_games, columns=["round", "team1", "team2", "winner"])
-        played_games_df = pd.DataFrame(played_games, columns=["round", "team1", "team2", "winner"])
-        print(unplayed_games_df.to_string(index=False))
-        print(played_games_df.to_string(index=False))
+        pass
     
 class TournamentSimulator:
     def __init__(self, num_trials: int, tournament_class: type, tournament_params: Dict[str, Any], 
@@ -192,7 +179,7 @@ class TournamentSimulator:
         """Returns the logged results as a Pandas DataFrame."""
         return pd.DataFrame(self.results_log)
 
-def ncaa_initial_matchups(tournament: Tournament) -> List[Tuple[Dict[str, Any], Dict[str, Any]]]:
+def ncaa_initial_matchups(tournament: "Tournament") -> List[Matchup]:
     """
     Generates first-round matchups using NCAA-style seeding.
     
@@ -212,7 +199,7 @@ def ncaa_initial_matchups(tournament: Tournament) -> List[Tuple[Dict[str, Any], 
     return matchups
 
 
-def ncaa_round_matchups(tournament: Tournament) -> List[Tuple[Dict[str, Any], Dict[str, Any]]]:
+def ncaa_round_matchups(tournament: "Tournament") -> List[Matchup]:
     """
     Generates next-round matchups using NCAA-style progression.
     
