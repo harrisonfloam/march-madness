@@ -10,16 +10,18 @@ Matchup = Tuple[Team, Team]  # Matchup of teams
 
 
 class Game:
-    def __init__(self, team1: str, team2: str, round_number: int, 
-                 team1_details: Dict = None, team2_details: Dict = None):
-        self.team1 = team1
-        self.team2 = team2
-        self.team1_details = team1_details or {}
-        self.team2_details = team2_details or {}
+    def __init__(self, team1: Team, team2: Team, round_number: int):
+        for team in (team1, team2):
+            if "team" not in team:
+                raise ValueError(f"Team dictionary must contain at least key 'team'. Found keys: {team.keys()}")
+        
+        self.team1 = team1["team"]
+        self.team2 = team2["team"]
+        self.team1_details = team1
+        self.team2_details = team2
         self.round_number = round_number
         self.winner = None
         self.winner_details = None
-        #TODO: make this simpler... just pass the details dict, grab the 'team'
         
     def set_winner(self, winner: str):
         if winner not in {self.team1, self.team2}:
@@ -116,7 +118,7 @@ class Tournament:
         matchups = self.round_matchup_strategy(self)
 
         # Create new games for the next round
-        new_games = [Game(team1["team"], team2["team"], self.current_round, team1_details=team1, team2_details=team2) for team1, team2 in matchups]
+        new_games = [Game(team1, team2, self.current_round) for team1, team2 in matchups]
         self.unplayed_games.extend(new_games)
         
     def get_unplayed_games(self, round_number: int = None) -> List[Game]:
