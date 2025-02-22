@@ -4,11 +4,10 @@ from typing import List, Callable, Dict, Any, Tuple
 from math import log2
 import numpy as np
 import pandas as pd
-import itertools
+from tqdm.auto import tqdm
 
-
-Team = Dict[str, Any]  # Team dictionary
-Matchup = Tuple[Team, Team]  # Matchup of teams
+from march_madness.matchup import ncaa_initial_matchups, ncaa_round_matchups
+from march_madness.types import Team, Matchup, Prediction
 
 
 class Game:
