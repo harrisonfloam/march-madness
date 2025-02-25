@@ -11,7 +11,7 @@ from march_madness.types import Team, Matchup, Prediction
 
 
 class Game:
-    def __init__(self, team1: Team, team2: Team, round_number: int):
+    def __init__(self, team1: Team, team2: Team, round_number: int, game_id: Dict = None):
         for team in (team1, team2):
             if "team" not in team:
                 raise ValueError(f"Team dictionary must contain at least key 'team'. Found keys: {team.keys()}")
@@ -21,6 +21,7 @@ class Game:
         self.team1_details = team1
         self.team2_details = team2
         self.round_number = round_number
+        self.game_id = game_id  # Not required
         self.winner = None
         self.winner_details = None
         
@@ -89,8 +90,8 @@ class Tournament:
         if not matchups:
             raise ValueError("Initial matchup strategy did not return any games. Check the strategy function.")
         
-        for team1, team2 in matchups:
-            game = Game(team1, team2, 1)
+        for team1, team2, game_id in matchups:
+            game = Game(team1, team2, 1, game_id)
             self.unplayed_games.append(game)
 
     def update_game_result(self, game: Game, winner: str, verbose: bool = False):
@@ -119,7 +120,7 @@ class Tournament:
         matchups = self.round_matchup_strategy(self)
 
         # Create new games for the next round
-        new_games = [Game(team1, team2, self.current_round) for team1, team2 in matchups]
+        new_games = [Game(team1, team2, self.current_round, game_id) for team1, team2, game_id in matchups]
         self.unplayed_games.extend(new_games)
         
     def get_unplayed_games(self, round_number: int = None) -> List[Game]:
@@ -173,7 +174,7 @@ class TournamentSimulator:
 
             while tournament.get_unplayed_games():
                 for game in tournament.get_unplayed_games():
-                    winner, details = self.prediction_strategy(tournament, game, rng)
+                    winner, prediction_details = self.prediction_strategy(tournament, game, rng)
                     tournament.update_game_result(game, winner)
                     
                     result = {
@@ -182,7 +183,12 @@ class TournamentSimulator:
                         "team1": game.team1,
                         "team2": game.team2,
                         "winner": winner,
-                        "details": details if self.prediction_details else None,
+                        "game_id": game.game_id,
+                        "tournament_winner": tournament.winner,
+                        "prediction_details": prediction_details if self.prediction_details else None,
+                        "team1_details": game.team1_details,
+                        "team2_details": game.team2_details,
+                        "winner_details": game.winner_details,
                         "tournament_state": self._get_tournament_snapshot(tournament)
                     }
                     self.results.append(result)
@@ -203,3 +209,4 @@ class TournamentSimulator:
     def to_dataframe(self):
         """Returns the logged results as a Pandas DataFrame."""
         return pd.DataFrame(self.results)
+    
