@@ -13,8 +13,9 @@ Manages a single-elimination tournament.
 - **unplayed_games** [list[Game]]: List of games yet to be played  
 - **played_games** [list[Game]]: List of completed games  
 - **winner** [str, optional]: Name of the tournament winner  
-- **num_rounds** [int]: Total number of rounds in the tournament  
-- **num_games** [int]: Total number of games in the tournament  
+- **num_teams**: Count of teams
+- **num_rounds** [int]: Total number of rounds in the tournament, assuming a single-elimination tournament
+- **num_games** [int]: Total number of games in the tournament  , assuming a single-elimination tournament
 
 #### Methods
 
