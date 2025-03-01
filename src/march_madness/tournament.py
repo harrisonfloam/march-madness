@@ -32,9 +32,9 @@ class Game:
         self.winner_details = self.team1_details if self.winner == self.team1 else self.team2_details
 
 class Tournament:
-    def __init__(self, teams: List[Team], 
-                 initial_matchup_strategy: Callable[["Tournament"], List[Matchup]] = None,
-                 round_matchup_strategy: Callable[["Tournament"], List[Matchup]] = None):
+    def __init__(self, teams: pd.DataFrame | List[Dict], 
+                 initial_matchup_strategy: Callable[["Tournament"], List[Matchup]] = ncaa_initial_matchups,
+                 round_matchup_strategy: Callable[["Tournament"], List[Matchup]] = ncaa_round_matchups):
         """
         Initializes a tournament.
         
@@ -43,19 +43,20 @@ class Tournament:
             initial_matchup_strategy: A function that determines first-round matchups.
             round_matchup_strategy: A function that determines matchups in later rounds.
         """
-        self.teams = self._process_teams(teams)
+        self.teams = self._process_teams(teams) #TODO: confusing that param teams isn't the same as attr teams
+        self.initial_matchup_strategy = initial_matchup_strategy
+        self.round_matchup_strategy = round_matchup_strategy
+        
         self.unplayed_games = []
         self.played_games = []
         self.winner = None
         
-        # Set default matchup strategies
-        self.initial_matchup_strategy = initial_matchup_strategy or ncaa_initial_matchups
-        self.round_matchup_strategy = round_matchup_strategy or ncaa_round_matchups
-        
-        self.num_rounds = int(log2(len(teams))) # Single elimination tournament
+        self.num_teams = len(teams)
+        self.num_rounds = int(log2(self.num_teams)) # Single elimination tournament
+        self.num_games = self.num_teams - 1
         
         self._validate_tournament()
-        self.create_initial_matchups()
+        self._create_initial_matchups()
         
     def _validate_tournament(self):
         """Validates tournament parameters before proceeding."""
@@ -83,17 +84,6 @@ class Tournament:
         else:
             raise ValueError("Teams must be provided as a DataFrame or a list of dictionaries.")
 
-    def create_initial_matchups(self):
-        """Creates first-round matchups using the initial matchup strategy."""
-        self.current_round = 1
-        matchups = self.initial_matchup_strategy(self)
-        if not matchups:
-            raise ValueError("Initial matchup strategy did not return any games. Check the strategy function.")
-        
-        for team1, team2, game_id in matchups:
-            game = Game(team1, team2, 1, game_id)
-            self.unplayed_games.append(game)
-
     def update_game_result(self, game: Game, winner: str, verbose: bool = False):
         """Marks the winner of a game and builds the next round when all games are complete."""
         game.set_winner(winner)
@@ -106,9 +96,26 @@ class Tournament:
 
         # If all games for this round are completed, advance the round
         elif len(self.unplayed_games) == 0:
-            self.create_next_round()
+            self._create_next_round()
+    
+    def get_unplayed_games(self, round_number: int = None) -> List[Game]:
+        """Returns unplayed games, optionally filtering by round."""
+        if round_number:
+            return [game for game in self.unplayed_games if game.round_number == round_number]
+        return self.unplayed_games.copy()   # Return as copy so future changes don't affect iterable use
 
-    def create_next_round(self):
+    def _create_initial_matchups(self):
+        """Creates first-round matchups using the initial matchup strategy."""
+        self.current_round = 1
+        matchups = self.initial_matchup_strategy(self)
+        if not matchups:
+            raise ValueError("Initial matchup strategy did not return any games. Check the strategy function.")
+        
+        for team1, team2, game_id in matchups:
+            game = Game(team1, team2, 1, game_id)
+            self.unplayed_games.append(game)
+
+    def _create_next_round(self):
         """Creates matchups for the next round using the round matchup strategy."""
         winners = [game.winner for game in self.played_games if game.winner and game.round_number == self.current_round]
 
@@ -123,18 +130,14 @@ class Tournament:
         new_games = [Game(team1, team2, self.current_round, game_id) for team1, team2, game_id in matchups]
         self.unplayed_games.extend(new_games)
         
-    def get_unplayed_games(self, round_number: int = None) -> List[Game]:
-        """Returns unplayed games, optionally filtering by round."""
-        if round_number:
-            return [game for game in self.unplayed_games if game.round_number == round_number]
-        return self.unplayed_games.copy()   # Return as copy so future changes don't affect iterable use
-
     def print_tournament_state(self):
         pass
 
 class TournamentSimulator:
-    def __init__(self, num_trials: int, tournament_class: type, tournament_params: Dict[str, Any], 
-                 prediction_strategy: Callable[["Game", "Tournament", int], Prediction], prediction_details: bool = False,
+    def __init__(self, num_trials: int, 
+                 prediction_strategy: Callable[["Game", "Tournament", np.random.Generator, Any], Prediction], 
+                 tournament_params: Dict[str, Any], tournament_class: type = Tournament, 
+                 prediction_strategy_kwargs: Any = {},
                  seed: int = 42):
         """
         Monte Carlo tournament simulator.
@@ -144,60 +147,80 @@ class TournamentSimulator:
             tournament_class: The Tournament class to instantiate.
             tournament_params: Dictionary of parameters to initialize Tournament.
             prediction_strategy: Callable that predicts the winner of a game.
-            prediction_details: Whether to log prediction confidence and context.
         """
         self.num_trials = num_trials
         self.tournament_class = tournament_class
         self.tournament_params = tournament_params
         self.prediction_strategy = prediction_strategy
-        self.prediction_details = prediction_details    #TODO: rework this... shouldnt be bool
+        self.prediction_strategy_kwargs = prediction_strategy_kwargs
         
         # RNG
         self.seed = seed
         self.seeds = self._generate_seeds()
         
         self.results = []
-        
-    def _generate_seeds(self) -> List[int]:
-        """Generate random seeds for each trial for reproducibility."""
-        seed_max = 2**32 - 1
-        np.random.seed(self.seed)
-        return np.random.randint(0, seed_max, size=self.num_trials).tolist()
 
     def run(self, verbose: bool = True):
         """Runs multiple tournament simulations and logs results."""
         trials = zip(range(1, self.num_trials+1), self.seeds)
-        pbar = tqdm(trials, total=self.num_trials, disable=not verbose)
-        for trial, trial_seed in pbar:
+        tournament = self.tournament_class(**self.tournament_params)
+        total_steps = self.num_trials * tournament.num_games
+        
+        
+        pbar = tqdm(trials, 
+                    total=total_steps, 
+                    postfix={
+                        "trial": 1,
+                        "game_winner": None,
+                        "tournament_winner": None
+                    },
+                    disable=not verbose)
+        for trial, trial_seed in trials:
             tournament = self.tournament_class(**self.tournament_params)
             rng = np.random.default_rng(trial_seed)  # One RNG per trial
 
             while tournament.get_unplayed_games():
                 for game in tournament.get_unplayed_games():
-                    winner, prediction_details = self.prediction_strategy(tournament, game, rng)
-                    tournament.update_game_result(game, winner)
+                    predicted_winner, prediction_details = self.prediction_strategy(tournament, game, rng, **self.prediction_strategy_kwargs)
+                    tournament.update_game_result(game, predicted_winner)
                     
                     result = {
                         "trial": trial,
                         "round": game.round_number,
                         "team1": game.team1,
                         "team2": game.team2,
-                        "winner": winner,
+                        "predicted_winner": predicted_winner,
                         "game_id": game.game_id,
                         "tournament_winner": tournament.winner,
-                        "prediction_details": prediction_details if self.prediction_details else None,
+                        "prediction_details": prediction_details or {},
                         "team1_details": game.team1_details,
                         "team2_details": game.team2_details,
                         "winner_details": game.winner_details,
                         "tournament_state": self._get_tournament_snapshot(tournament)
                     }
                     self.results.append(result)
-            
+
+                    pbar.update()
+                    postfix = {
+                        "trial": trial,
+                        "game_winner": predicted_winner,
+                        "tournament_winner": tournament.winner
+                    }
+                    pbar.set_postfix(postfix)
+                
             postfix = {
-                "winner": tournament.winner
+                "trial": trial,
+                "game_winner": predicted_winner,
+                "tournament_winner": tournament.winner
             }
             pbar.set_postfix(postfix)
 
+    def _generate_seeds(self) -> List[int]:
+        """Generate random seeds for each trial for reproducibility."""
+        seed_max = 2**32 - 1
+        np.random.seed(self.seed)
+        return np.random.randint(0, seed_max, size=self.num_trials).tolist()
+    
     def _get_tournament_snapshot(self, tournament) -> List[Tuple[int, str, str, str]]:
         """Returns a structured snapshot of the tournament state."""
         #TODO: rework
