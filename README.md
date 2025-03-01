@@ -16,7 +16,7 @@ A Python project for open-ended tournament management and simulation, specifical
 
 ## Usage
 
-Detailed documentation available [here](https://github.com/harrisonfloam/march-madness/blob/main/src/march_madness/README.md).
+Detailed documentation available [here](https://github.com/harrisonfloam/march-madness/tree/main/src/march_madness).
 
 ###### Create a Tournament instance
 ```python
