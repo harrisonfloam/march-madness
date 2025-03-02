@@ -27,7 +27,9 @@ from march_madness.matchup import ncaa_initial_matchups, ncaa_round_matchups
 
 teams = pd.read_csv("data/march_madness_2024.csv")
 
-tournament = Tournament(teams, ncaa_initial_matchups, ncaa_round_matchups)
+tournament = Tournament(teams=teams, 
+                        initial_matchup_strategy=ncaa_initial_matchups, 
+                        round_matchup_strategy=ncaa_round_matchups)
 ```
 
 ###### Extract the first round games
@@ -36,7 +38,7 @@ for game in tournament.get_unplayed_games():
     print(f"Round {game.round_number}: {game.team1} vs {game.team2}")
 
     # Set team1 as the winner for each game
-    tournament.update_game_result(game, game.team1)
+    tournament.update_game_result(game=game, winner=game.team1)
 ```
 
 ###### Simulate with a simple strategy
@@ -95,3 +97,7 @@ conda env export --no-builds | grep -v '^prefix:' > environment.yml
 ```powershell
 conda env export --no-builds | Select-String -NotMatch '^prefix:' | Out-File -Encoding utf8 environment.yml
 ```
+
+## Dependencies
+
+The only external dependency is [Ollama](https://ollama.com/download/windows), required for prediction with a locally installed LLM.
