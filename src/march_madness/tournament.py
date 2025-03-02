@@ -84,7 +84,7 @@ class Tournament:
         else:
             raise ValueError("Teams must be provided as a DataFrame or a list of dictionaries.")
 
-    def update_game_result(self, game: Game, winner: str, verbose: bool = False):
+    def update_game_result(self, game: Game, winner: str):
         """Marks the winner of a game and builds the next round when all games are complete."""
         game.set_winner(winner)
         self.unplayed_games.remove(game)
