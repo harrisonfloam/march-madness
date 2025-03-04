@@ -40,7 +40,9 @@ from march_madness.matchup import ncaa_initial_matchups, ncaa_round_matchups
 
 teams = pd.read_csv("data/march_madness_2024.csv")
 
-tournament = Tournament(teams, ncaa_initial_matchups, ncaa_round_matchups)
+tournament = Tournament(teams=teams, 
+                        initial_matchup_strategy=ncaa_initial_matchups, 
+                        round_matchup_strategy=ncaa_round_matchups)
 ```
 
 ###### Extract the first round games

@@ -75,12 +75,12 @@ simulator = TournamentSimulator(num_trials=100,
 ## Setup
 
 Clone the repository:
-```
+```bash
 git clone https://github.com/harrisonfloam/march-madness.git
 ```
 
 Activate the development environment:
-```
+```bash
 conda env create -f environment.yml
 conda activate march-madness
 pip install -e .
