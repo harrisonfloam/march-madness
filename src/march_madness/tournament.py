@@ -139,6 +139,7 @@ class TournamentSimulator:
                  tournament_params: Dict[str, Any], tournament_class: type = Tournament, 
                  prediction_strategy_kwargs: Any = {},
                  seed: int = 42):
+        #TODO: make tournament_class simpler... instantiate before?
         """
         Monte Carlo tournament simulator.
 
@@ -190,13 +191,16 @@ class TournamentSimulator:
                         "team1": game.team1,
                         "team2": game.team2,
                         "predicted_winner": predicted_winner,
-                        "game_id": game.game_id,
+                        "prediction_confidence": prediction_details.get("confidence", 0.5),
+                        "prediction_reasoning": prediction_details.get("reasoning", "None."),
                         "tournament_winner": tournament.winner,
+                        "game_id": game.game_id,
                         "prediction_details": prediction_details or {},
                         "team1_details": game.team1_details,
                         "team2_details": game.team2_details,
                         "winner_details": game.winner_details,
-                        "tournament_state": self._get_tournament_snapshot(tournament)
+                        "tournament_state": self._get_tournament_snapshot(tournament),
+                        "trial_seed": trial_seed
                     }
                     self.results.append(result)
 
