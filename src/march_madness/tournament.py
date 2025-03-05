@@ -5,6 +5,8 @@ from math import log2
 import numpy as np
 import pandas as pd
 from tqdm.auto import tqdm
+from pathlib import Path
+import os
 
 from march_madness.matchup import ncaa_initial_matchups, ncaa_round_matchups
 from march_madness.types import Team, Matchup, Prediction
@@ -130,14 +132,21 @@ class Tournament:
         new_games = [Game(team1, team2, self.current_round, game_id) for team1, team2, game_id in matchups]
         self.unplayed_games.extend(new_games)
         
-    def print_tournament_state(self):
-        pass
+    def get_tournament_state(self):
+        return [
+            {
+                "game_id": game.game_id,
+                "winner": game.winner
+            }
+            for game in self.played_games
+        ]
 
 class TournamentSimulator:
     def __init__(self, num_trials: int, 
                  prediction_strategy: Callable[["Game", "Tournament", np.random.Generator, Any], Prediction], 
                  tournament_params: Dict[str, Any], tournament_class: type = Tournament, 
                  prediction_strategy_kwargs: Any = {},
+                 result_path: str | Path = None,
                  seed: int = 42):
         #TODO: make tournament_class simpler... instantiate before?
         """
@@ -154,19 +163,30 @@ class TournamentSimulator:
         self.tournament_params = tournament_params
         self.prediction_strategy = prediction_strategy
         self.prediction_strategy_kwargs = prediction_strategy_kwargs
+        self.result_path = Path(result_path) if result_path else None
         
         # RNG
         self.seed = seed
-        self.seeds = self._generate_seeds()
         
         self.results = []
 
-    def run(self, verbose: bool = True):
+    def run(self, resume: bool = False, verbose: bool = True):
         """Runs multiple tournament simulations and logs results."""
-        trials = zip(range(1, self.num_trials+1), self.seeds)
+        existing_seeds = None
+        if self.result_path:
+            os.makedirs(os.path.dirname(self.result_path), exist_ok=True)
+            if resume:
+                # Don't use the existing seeds again
+                existing_seeds = self._load_existing_results()
+            else:
+                # Overwrite the existing results
+                if os.path.exists(self.result_path):
+                    os.remove(self.result_path)
+                
+        trial_seeds = self._generate_seeds(exclude=existing_seeds)
+        trials = zip(range(1, self.num_trials+1), trial_seeds)
         tournament = self.tournament_class(**self.tournament_params)
         total_steps = self.num_trials * tournament.num_games
-        
         
         pbar = tqdm(trials, 
                     total=total_steps, 
@@ -179,7 +199,8 @@ class TournamentSimulator:
         for trial, trial_seed in trials:
             tournament = self.tournament_class(**self.tournament_params)
             rng = np.random.default_rng(trial_seed)  # One RNG per trial
-
+            trial_results = []
+            
             while tournament.get_unplayed_games():
                 for game in tournament.get_unplayed_games():
                     predicted_winner, prediction_details = self.prediction_strategy(tournament, game, rng, **self.prediction_strategy_kwargs)
@@ -187,31 +208,37 @@ class TournamentSimulator:
                     
                     result = {
                         "trial": trial,
+                        "trial_seed": trial_seed,
                         "round": game.round_number,
                         "team1": game.team1,
                         "team2": game.team2,
-                        "predicted_winner": predicted_winner,
+                        "game_winner": predicted_winner,
                         "prediction_confidence": prediction_details.get("confidence", 0.5),
-                        "prediction_reasoning": prediction_details.get("reasoning", "None."),
-                        "tournament_winner": tournament.winner,
                         "game_id": game.game_id,
+                        "tournament_winner": tournament.winner,
+                        "prediction_reasoning": prediction_details.get("reasoning", "None."),
                         "prediction_details": prediction_details or {},
                         "team1_details": game.team1_details,
                         "team2_details": game.team2_details,
                         "winner_details": game.winner_details,
-                        "tournament_state": self._get_tournament_snapshot(tournament),
-                        "trial_seed": trial_seed
+                        "tournament_state": tournament.get_tournament_state(),
                     }
-                    self.results.append(result)
+                    trial_results.append(result)
 
                     pbar.update()
+                    if tournament.winner:
+                        prev_tournament_winner = tournament.winner
                     postfix = {
                         "trial": trial,
+                        "team1": game.team1,
+                        "team2": game.team2,
                         "game_winner": predicted_winner,
-                        "tournament_winner": tournament.winner
+                        "tournament_winner": tournament.winner,
+                        "prev_tournament_winner": prev_tournament_winner
                     }
                     pbar.set_postfix(postfix)
                 
+            self._update_results(trial_results)
             postfix = {
                 "trial": trial,
                 "game_winner": predicted_winner,
@@ -219,19 +246,32 @@ class TournamentSimulator:
             }
             pbar.set_postfix(postfix)
 
-    def _generate_seeds(self) -> List[int]:
+    def _generate_seeds(self, exclude: set = None) -> List[int]:
         """Generate random seeds for each trial for reproducibility."""
         seed_max = 2**32 - 1
-        np.random.seed(self.seed)
-        return np.random.randint(0, seed_max, size=self.num_trials).tolist()
-    
-    def _get_tournament_snapshot(self, tournament) -> List[Tuple[int, str, str, str]]:
-        """Returns a structured snapshot of the tournament state."""
-        #TODO: rework
-        return [
-            (game.round_number, game.team1, game.team2, game.winner)
-            for game in tournament.played_games
-        ]
+        exclude = exclude or set()
+        seeds = set()  # Stores new unique seeds
+        while len(seeds) < self.num_trials:
+            new_seed = np.random.randint(0, seed_max)
+            if new_seed not in exclude and new_seed not in seeds:
+                seeds.add(new_seed)
+
+        return list(seeds)
+        
+    def _update_results(self, trial_results):
+        self.results.extend(trial_results)
+        # Cache results
+        if self.result_path:
+            df = pd.DataFrame(trial_results)
+            df.to_csv(self.result_path, mode="a", header=not self.result_path.exists(), index=False)
+        
+    def _load_existing_results(self) -> set:
+        """Load trial seeds from existing results to avoid duplication."""
+        if self.result_path.exists():
+            df = pd.read_csv(self.result_path, usecols=["trial_seed"])
+            return set(df["trial_seed"].dropna().astype(int))
+        else:
+            return set()
     
     def to_dataframe(self):
         """Returns the logged results as a Pandas DataFrame."""
