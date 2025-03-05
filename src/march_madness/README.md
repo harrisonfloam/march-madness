@@ -65,6 +65,7 @@ Runs Monte Carlo simulations of a tournament.
 - **tournament_params** [dict]: Params to initialize the tournament with
 - **prediction_strategy** [Callable]: Generates gamer winner predictions
 - **prediction_strategy_kwargs** [dict] = {}: Key word arguments to pass to the prediction strategy function
+- **result_path** [str | Path] = None: Path to cache simulation results as csv
 - **seed** [int] = 42: Ensures reproducibility across trials by seeding `np.random.Generator`. New seeds are generated for each prediction, creating stochasticity within trials.
 
 #### Attributes
@@ -72,9 +73,10 @@ Runs Monte Carlo simulations of a tournament.
 - **seeds** [list[int]]: List of seeds used to seed `np.random.Generator` for each trial
 
 #### Methods
-- **run**(verbose=True)  
+- **run**(resume=False, verbose=True)  
 Runs multiple tournament simulations and logs results.
 
+    - **resume** [bool]: If true, loads previous trials in `self.result_path` and ensures all new trial seeds are unique. Appends to existing csv.
     - **verbose** [bool]: Toggles `tqdm` progress bar visibility, with results logged at the game level
 
 - **to_dataframe**()  
@@ -109,6 +111,7 @@ simulator = TournamentSimulator(num_trials=100,
                                 prediction_strategy_kwargs={
                                     "model_name": "llama3.2:1b"
                                 },
+                                result_path="results/llam3_2-1b.csv", # Add a cache directory
                                 seed=42)
-# Run and extract results...
+simulator.run(resume=True, verbose=True)  # Resume from previous trial
 ```

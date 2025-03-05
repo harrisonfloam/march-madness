@@ -68,8 +68,9 @@ simulator = TournamentSimulator(num_trials=100,
                                 prediction_strategy_kwargs={
                                     "model_name": "llama3.2:1b"
                                 },
+                                result_path="results/llam3_2-1b.csv", # Add a cache directory
                                 seed=42)
-# Run and extract results...
+simulator.run(resume=True, verbose=True)  # Resume from previous trial
 ```
 
 ## Setup
