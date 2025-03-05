@@ -6,19 +6,19 @@ import json
 from langchain_openai import ChatOpenAI
 from langchain_ollama import ChatOllama
 from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.exceptions import OutputParserException
 from dotenv import load_dotenv
 import os
-from pydantic import BaseModel, Field
-
+from pydantic import BaseModel, Field, ValidationError
 
 if TYPE_CHECKING:
     from march_madness.tournament import Tournament, Game
 from march_madness.types import Prediction
 
 class LLMPredictionResponse(BaseModel):
-    winner: int = Field(..., description="The winning team's number (1 or 2).", gt=0, lt=2, strict=True)
+    winner: int = Field(..., description="The winning team's number (1 or 2).", ge=1, le=2, strict=True)
     confidence: float = Field(..., description="Confidence score (between 0 and 1).", ge=0.0, le=1.0)
-    reasoning: str = Field(..., description="A concise explanation (max 2 sentences).")
+    reasoning: str = Field(..., description="A concise explanation (max 2 sentences, single line).")
 
 def random_prediction(tournament: "Tournament", game: "Game", rng: np.random.Generator) -> Prediction:
     """Randomly picks one of the teams as the winner."""
@@ -40,7 +40,7 @@ def llm_prediction(tournament: "Tournament", game: "Game", rng: np.random.Genera
         if OPENAI_API_KEY:
             llm = ChatOpenAI(
                 model=model_name,
-                temperature=0.8,
+                temperature=0.6,
                 seed=seed,
             )
             llm = llm.bind(response_format={"type": "json_object"})
@@ -51,7 +51,7 @@ def llm_prediction(tournament: "Tournament", game: "Game", rng: np.random.Genera
     elif model_name in ["mistral", "llama3.2:1b"]:
         llm = ChatOllama(
             model = model_name, 
-            temperature = 0.8,
+            temperature = 0.6,
             seed=seed,
             format=LLMPredictionResponse.model_json_schema()
         )
@@ -71,8 +71,8 @@ def llm_prediction(tournament: "Tournament", game: "Game", rng: np.random.Genera
             
             Response **only** with a valid `LLMPredictionResponse` Pydantic object with the following fields populated as specified:
             - winner: The number of the winning team (1 or 2) as specified in the prompt.
-            - confidence: A confidence rating for your prediction.
-            - reasoning: A concise explanation of your reasoning, max 2 sentences.
+            - confidence: A confidence rating for your prediction (between 0 and 1).
+            - reasoning: A concise explanation of your reasoning, using the actual team names, not numbers (max 2 sentences, single line, plaintext).
             
             The matchup to be predicted will be specified in this format:
                 Team 1: '{{team1}}', seed {{team1_seed}}
@@ -101,41 +101,45 @@ def llm_prediction(tournament: "Tournament", game: "Game", rng: np.random.Genera
             '''
             {historical_context}
             '''
+            
+            If any errors have been encountered validating your response to this same prompt, they will appear below. Correct your response to resolve them, if any.
+            '''
+            {error_context}
+            '''
             """
         ))
     ])
+    tournament_state = "\n".join(str(game) for game in tournament.get_tournament_state())
 
-    formatted_prompt = prompt_template.format(
-        team1=game.team1,
-        team2=game.team2,
-        team1_seed=game.team1_details["seed"],
-        team2_seed=game.team2_details["seed"],
-        round=game.round_number,
-        tournament_state="Unavailable",
-        historical_context="Unavailable"
-    )
-
-    response = llm.invoke(formatted_prompt)
-    parsed_response = response
-    
-    return (
-        getattr(game, f"team{parsed_response.winner}"),
-        {"confidence": parsed_response.confidence, "reasoning": parsed_response.reasoning}
-    )
-    
-"""
-            Respond **only** in this format as a valid JSON object:
-            {{
-                "winner": "Team Name",
-                "confidence": 0.50,
-                "reasoning": "Concise but comprehensive explanation (2 sentences max)."
-            }}
+    MAX_RETRIES = 5
+    error_messages = []
+    for attempt in range(MAX_RETRIES):
+        try:
+            # ChatClass = type(llm)
+            # llm = ChatClass(
+            #     model = model_name, 
+            #     temperature = 0.6,
+            #     seed=seed+attempt,
+            #     format=LLMPredictionResponse.model_json_schema()
+            # )
+            error_context = "\n".join(f"Error {i}: {msg}" for i, msg in reversed(list(enumerate(error_messages, start=1)))) if error_messages else ""
+            formatted_prompt = prompt_template.format(
+                team1=game.team1,
+                team2=game.team2,
+                team1_seed=game.team1_details["seed"],
+                team2_seed=game.team2_details["seed"],
+                round=game.round_number,
+                tournament_state=tournament_state,
+                historical_context="Unavailable",
+                error_context=error_context
+            )
+            response = llm.invoke(formatted_prompt)
             
-            Example:
-            ```
-            {{
-                "winner": "Duke",
-                "confidence": 0.75,
-                "reasoning": "Duke has a better record against top 10 teams and a stronger defensive efficiency."
-            }}
-"""
+            winner = getattr(game, f"team{response.winner}")
+            return winner, {"confidence": response.confidence, "reasoning": response.reasoning}
+
+        except (ValidationError, OutputParserException) as e:
+            error_messages.append(str(e))
+            print(f"Warning: LLM output parsing failed (attempt {attempt+1}/{MAX_RETRIES}): {e}")
+
+    raise RuntimeError(f"LLM output parsing failed after {MAX_RETRIES} attempts.")
