@@ -9,16 +9,12 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.exceptions import OutputParserException
 from dotenv import load_dotenv
 import os
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field, ValidationError, field_validator, model_validator
 
 if TYPE_CHECKING:
     from march_madness.tournament import Tournament, Game
 from march_madness.types import Prediction
 
-class LLMPredictionResponse(BaseModel):
-    winner: int = Field(..., description="The winning team's number (1 or 2).", ge=1, le=2, strict=True)
-    confidence: float = Field(..., description="Confidence score (between 0 and 1).", ge=0.0, le=1.0)
-    reasoning: str = Field(..., description="A concise explanation (max 2 sentences, single line).")
 
 def random_prediction(tournament: "Tournament", game: "Game", rng: np.random.Generator) -> Prediction:
     """Randomly picks one of the teams as the winner."""
@@ -38,6 +34,7 @@ def llm_prediction(tournament: "Tournament", game: "Game", rng: np.random.Genera
         load_dotenv()
         OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
         if OPENAI_API_KEY:
+            # ChatClass = ChatOpenAI
             llm = ChatOpenAI(
                 model=model_name,
                 temperature=0.6,
@@ -49,6 +46,7 @@ def llm_prediction(tournament: "Tournament", game: "Game", rng: np.random.Genera
             raise ValueError("OPENAI_API_KEY not found. Specify one in .env.")
     # Ollama models
     elif model_name in ["mistral", "llama3.2:1b"]:
+        # ChatClass = ChatOllama
         llm = ChatOllama(
             model = model_name, 
             temperature = 0.6,
@@ -71,7 +69,7 @@ def llm_prediction(tournament: "Tournament", game: "Game", rng: np.random.Genera
             
             Response **only** with a valid `LLMPredictionResponse` Pydantic object with the following fields populated as specified:
             - winner: The number of the winning team (1 or 2) as specified in the prompt.
-            - confidence: A confidence rating for your prediction (between 0 and 1).
+            - confidence: The probability of your prediction being correct (float value between 0 and 1).
             - reasoning: A concise explanation of your reasoning, using the actual team names, not numbers (max 2 sentences, single line, plaintext).
             
             The matchup to be predicted will be specified in this format:
@@ -111,17 +109,11 @@ def llm_prediction(tournament: "Tournament", game: "Game", rng: np.random.Genera
     ])
     tournament_state = "\n".join(str(game) for game in tournament.get_tournament_state())
 
+    #NOTE: retries shouldnt be needed since validation fails silently
     MAX_RETRIES = 5
     error_messages = []
     for attempt in range(MAX_RETRIES):
         try:
-            # ChatClass = type(llm)
-            # llm = ChatClass(
-            #     model = model_name, 
-            #     temperature = 0.6,
-            #     seed=seed+attempt,
-            #     format=LLMPredictionResponse.model_json_schema()
-            # )
             error_context = "\n".join(f"Error {i}: {msg}" for i, msg in reversed(list(enumerate(error_messages, start=1)))) if error_messages else ""
             formatted_prompt = prompt_template.format(
                 team1=game.team1,
@@ -136,6 +128,7 @@ def llm_prediction(tournament: "Tournament", game: "Game", rng: np.random.Genera
             response = llm.invoke(formatted_prompt)
             
             winner = getattr(game, f"team{response.winner}")
+            #TODO: clean this up
             return winner, {"confidence": response.confidence, "reasoning": response.reasoning}
 
         except (ValidationError, OutputParserException) as e:
@@ -143,3 +136,71 @@ def llm_prediction(tournament: "Tournament", game: "Game", rng: np.random.Genera
             print(f"Warning: LLM output parsing failed (attempt {attempt+1}/{MAX_RETRIES}): {e}")
 
     raise RuntimeError(f"LLM output parsing failed after {MAX_RETRIES} attempts.")
+
+
+class LLMPredictionResponse(BaseModel):
+    winner: int = Field(..., description="The winning team's number (1 or 2).")
+    confidence: float = Field(..., description="The probability of the prediction being correct (between 0 and 1).")
+    reasoning: str = Field(..., description="A concise explanation (max 2 sentences, single line).")
+    
+    # Store raw values
+    raw_winner: int | None = None
+    raw_confidence: float | None = None
+    raw_reasoning: str | None = None
+    
+    @model_validator(mode="before")
+    @classmethod
+    def store_raw_values(cls, data):
+        """Store raw input values before validation."""
+        if isinstance(data, dict):
+            return {
+                **data,
+                "raw_winner": data.get("winner"),
+                "raw_confidence": data.get("confidence"),
+                "raw_reasoning": data.get("reasoning"),
+            }
+        return data
+    
+    @field_validator("winner", mode="before")
+    @classmethod
+    def coerce_winner(cls, v):
+        if not isinstance(v, int):
+            try:
+                v = int(v)
+            except ValueError:
+                return 1  # Default to 1...
+        return 1 if v < 1.5 else 2  # Closest valid value
+
+    @field_validator("confidence", mode="before")
+    @classmethod
+    def coerce_confidence(cls, v):
+        # Convert to float
+        if not isinstance(v, (int, float)):
+            try:
+                v = float(v)
+            except ValueError:
+                return 0.5  # Default
+        # LLM used 0-10 scale
+        if 1 < v <= 10:
+            v /= 10
+        # LLM used 0-100 scale
+        elif 10 < v <= 100:
+            v /= 100
+        # Unknown scale
+        elif v > 100:
+            return 0.5  # Default
+        # Negative probability
+        elif v < 0:
+            return 0.0
+        return max(0, min(v, 1))
+        
+    @field_validator("reasoning", mode="before")
+    @classmethod
+    def coerce_reasoning(cls, v):
+        if not isinstance(v, str):
+            try:
+                v = str(v)
+            except ValueError:
+                return "Unavailable."
+        return v
+    
