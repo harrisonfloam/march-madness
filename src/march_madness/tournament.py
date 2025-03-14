@@ -145,7 +145,7 @@ class TournamentSimulator:
     def __init__(self, num_trials: int, 
                  prediction_strategy: Callable[["Game", "Tournament", np.random.Generator, Any], Prediction], 
                  tournament_params: Dict[str, Any], tournament_class: type = Tournament, 
-                 prediction_strategy_kwargs: Any = {},
+                 prediction_strategy_params: Dict[str, Any] = {},
                  result_path: str | Path = None,
                  seed: int = 42):
         #TODO: make tournament_class simpler... instantiate before?
@@ -157,12 +157,14 @@ class TournamentSimulator:
             tournament_class: The Tournament class to instantiate.
             tournament_params: Dictionary of parameters to initialize Tournament.
             prediction_strategy: Callable that predicts the winner of a game.
+            prediction_strategy_params: Dictionary of parameters to pass to prediction_strategy callable.
+            result_path: Path to .csv to cache results. Loaded when calling `run` with `resume=True`.
         """
         self.num_trials = num_trials
         self.tournament_class = tournament_class
         self.tournament_params = tournament_params
         self.prediction_strategy = prediction_strategy
-        self.prediction_strategy_kwargs = prediction_strategy_kwargs
+        self.prediction_strategy_params = prediction_strategy_params
         self.result_path = Path(result_path) if result_path else None
         
         # RNG
@@ -196,6 +198,7 @@ class TournamentSimulator:
                         "tournament_winner": None
                     },
                     disable=not verbose)
+        prev_tournament_winner = None
         for trial, trial_seed in trials:
             tournament = self.tournament_class(**self.tournament_params)
             rng = np.random.default_rng(trial_seed)  # One RNG per trial
@@ -203,7 +206,7 @@ class TournamentSimulator:
             
             while tournament.get_unplayed_games():
                 for game in tournament.get_unplayed_games():
-                    predicted_winner, prediction_details = self.prediction_strategy(tournament, game, rng, **self.prediction_strategy_kwargs)
+                    predicted_winner, prediction_details = self.prediction_strategy(tournament, game, rng, **self.prediction_strategy_params)
                     tournament.update_game_result(game, predicted_winner)
                     
                     result = {
