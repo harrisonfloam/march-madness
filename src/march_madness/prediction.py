@@ -16,16 +16,20 @@ if TYPE_CHECKING:
 from march_madness.types import Prediction
 
 
-def random_prediction(tournament: "Tournament", game: "Game", rng: np.random.Generator) -> Prediction:
+def random_prediction(tournament: "Tournament", game: "Game", rng: np.random.Generator,
+                      p_team1: float = 0.50) -> Prediction:
     """Randomly picks one of the teams as the winner."""
-    winner = str(rng.choice([game.team1, game.team2]))
-    return winner, {"confidence": 0.50}
+    winner = str(rng.choice([game.team1, game.team2], p=[p_team1, 1-p_team1]))
+    confidence = p_team1 if winner == game.team1 else (1 - p_team1)
+    
+    return winner, {"confidence": confidence}
 
 def team1_always_wins(tournament: "Tournament", game: "Game", rng: np.random.Generator) -> Prediction:
     """Always selects team1 as the winner."""
     return game.team1, None
 
-def llm_prediction(tournament: "Tournament", game: "Game", rng: np.random.Generator, model_name: str) -> Prediction:
+def llm_prediction(tournament: "Tournament", game: "Game", rng: np.random.Generator, 
+                   model_name: str) -> Prediction:
     """Use an LLM to select a winner."""
     seed = rng.integers(1, 2**32)
     
