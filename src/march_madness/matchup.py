@@ -34,7 +34,6 @@ def ncaa_initial_matchups(tournament: "Tournament") -> List[Matchup]:
 
         for (seed1, seed2) in itertools.batched(NCAA_BRACKET_PROGRESSION, 2):
             game_id += 1
-
             matchups.append((teams_by_seed[seed1], teams_by_seed[seed2], game_id))  # Highest vs. Lowest
     return matchups
 
@@ -52,7 +51,7 @@ def ncaa_round_matchups(tournament: "Tournament") -> List[Matchup]:
     prev_round_games = [game for game in tournament.played_games if game.winner and game.round_number == tournament.current_round-1]
     num_winners = len(prev_round_games)
     num_regions = len(NCAA_REGION_ORDER)
-    game_id = int(sum(64/2**r for r in range(1, tournament.current_round)))
+    game_id = int(np.sum(64 / np.power(2, np.arange(1, tournament.current_round))))
     matchups = []
 
     # Regional rounds
