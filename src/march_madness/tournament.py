@@ -1,6 +1,6 @@
 """Tournament class definition."""
 
-from typing import List, Callable, Dict, Any, Tuple
+from typing import List, Callable, Dict, Any, Tuple, Literal
 from math import log2
 import numpy as np
 import pandas as pd
@@ -172,8 +172,11 @@ class TournamentSimulator:
         
         self.results = []
 
-    def run(self, resume: bool = False, verbose: bool = True):
+    def run(self, resume: bool = False, verbose: bool = True, pbar_level: Literal["game", "trial"] = "game"):
         """Runs multiple tournament simulations and logs results."""
+        if pbar_level not in ["game", "trial"]:
+            raise ValueError(f"pbar_level must be either 'game' or 'trial', got {pbar_level}.")
+        
         existing_seeds = None
         if self.result_path:
             os.makedirs(os.path.dirname(self.result_path), exist_ok=True)
@@ -209,45 +212,48 @@ class TournamentSimulator:
                     predicted_winner, prediction_details = self.prediction_strategy(tournament, game, rng, **self.prediction_strategy_params)
                     tournament.update_game_result(game, predicted_winner)
                     
+                    # Clean up result keys
+                    prefixed_prediction_details = {f"prediction_{k}": v for k, v in (prediction_details or {}).items()}
+                    prefixed_team1_details = {f"team1_{k}": v for k, v in game.team1_details.items() if k != "team"}
+                    prefixed_team2_details = {f"team2_{k}": v for k, v in game.team2_details.items() if k != "team"}
+                    prefixed_winner_details = {f"winner_{k}": v for k, v in game.winner_details.items() if k != "team"}
+                    
                     result = {
                         "trial": trial,
                         "trial_seed": trial_seed,
+                        "game_id": game.game_id,
                         "round": game.round_number,
                         "team1": game.team1,
                         "team2": game.team2,
                         "game_winner": predicted_winner,
-                        "prediction_confidence": prediction_details.get("confidence", 0.5),
-                        "game_id": game.game_id,
                         "tournament_winner": tournament.winner,
-                        "prediction_reasoning": prediction_details.get("reasoning", "None."),
-                        "prediction_details": prediction_details or {},
-                        "team1_details": game.team1_details,
-                        "team2_details": game.team2_details,
-                        "winner_details": game.winner_details,
+                        **prefixed_prediction_details,
+                        **prefixed_team1_details,
+                        **prefixed_team2_details,
+                        **prefixed_winner_details,
                         "tournament_state": tournament.get_tournament_state(),
                     }
                     trial_results.append(result)
 
                     pbar.update()
+                    if pbar_level == "game":
+                        pbar.set_postfix({
+                            "trial": trial,
+                            "team1": game.team1,
+                            "team2": game.team2,
+                            "game_winner": predicted_winner,
+                            "tournament_winner": tournament.winner,
+                            "prev_tournament_winner": prev_tournament_winner
+                        })
                     if tournament.winner:
+                        if pbar_level == "trial":
+                            pbar.set_postfix({
+                                "trial": trial,
+                                "tournament_winner": tournament.winner
+                            })
                         prev_tournament_winner = tournament.winner
-                    postfix = {
-                        "trial": trial,
-                        "team1": game.team1,
-                        "team2": game.team2,
-                        "game_winner": predicted_winner,
-                        "tournament_winner": tournament.winner,
-                        "prev_tournament_winner": prev_tournament_winner
-                    }
-                    pbar.set_postfix(postfix)
                 
             self._update_results(trial_results)
-            postfix = {
-                "trial": trial,
-                "game_winner": predicted_winner,
-                "tournament_winner": tournament.winner
-            }
-            pbar.set_postfix(postfix)
 
     def _generate_seeds(self, exclude: set = None) -> List[int]:
         """Generate random seeds for each trial for reproducibility."""
