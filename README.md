@@ -4,15 +4,7 @@ A Python project for open-ended tournament management and simulation, specifical
 
 ## Outline
 
-- `src/march_madness/`: main project directory
-  - tournament.py: 
-  - prediction.py: 
-  - matchup.py: 
-  - types.py: 
-- `notebooks/`: tutorial notebooks
-  - march_madness.ipynb: 
-- `data/`: .csv files containing tournament initialization data
-  - march_madness_2024.csv
+TODO
 
 ## Usage
 
