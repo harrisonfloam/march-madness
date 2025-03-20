@@ -21,17 +21,24 @@ def random_prediction(tournament: "Tournament", game: "Game", rng: np.random.Gen
     """Randomly picks one of the teams as the winner."""
     winner = str(rng.choice([game.team1, game.team2], p=[p_team1, 1-p_team1]))
     confidence = p_team1 if winner == game.team1 else (1 - p_team1)
-    
-    return winner, {"confidence": confidence}
+    prediction_details = {
+        "confidence": confidence,
+        "reasoning": f"Randomly selected {winner} as the winner."
+    }
+    return winner, prediction_details
 
 def team1_always_wins(tournament: "Tournament", game: "Game", rng: np.random.Generator) -> Prediction:
     """Always selects team1 as the winner."""
-    return game.team1, None
+    prediction_details = {
+        "confidence": 1.0, 
+        "reasoning": "Team 1 always wins."
+    }
+    return game.team1, prediction_details
 
 def llm_prediction(tournament: "Tournament", game: "Game", rng: np.random.Generator, 
                    model_name: str) -> Prediction:
     """Use an LLM to select a winner."""
-    seed = rng.integers(1, 2**32)
+    seed = rng.integers(1, 2**32)   # Generate a new seed so that each prediction isn't seeded the same
     
     # OpenAI models
     if "gpt" in model_name.lower():
@@ -132,8 +139,11 @@ def llm_prediction(tournament: "Tournament", game: "Game", rng: np.random.Genera
             response = llm.invoke(formatted_prompt)
             
             winner = getattr(game, f"team{response.winner}")
-            #TODO: clean this up
-            return winner, {"confidence": response.confidence, "reasoning": response.reasoning}
+            prediction_details = {
+                "confidence": response.confidence, 
+                "reasoning": response.reasoning
+            }
+            return winner, prediction_details
 
         except (ValidationError, OutputParserException) as e:
             error_messages.append(str(e))
