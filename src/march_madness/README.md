@@ -4,14 +4,14 @@
 Manages a single-elimination tournament.
 
 #### Parameters
-- **teams** [pd.DataFrame | list[dict]]: Teams dataset, must contain at least the key (column) 'team'
+- **team_data** [pd.DataFrame | PathLike | list[dict]]: Teams dataset, must contain at least the key (column) 'team'; may pass filepath to load from csv internally
 - **initial_matchup_strategy** [Callable] = `ncaa_initial_matchups`: Generates first round matchups
 - **round_matchup_strategy** [Callable] = `ncaa_round_matchups`: Generates second to final round matchups
 
 #### Attributes
 - **teams** [dict[str, dict]]: Dictionary mapping team names to team details
-- **unplayed_games** [list[Game]]: List of games yet to be played  
-- **played_games** [list[Game]]: List of completed games  
+- **unplayed_games** [list[Game]]: List of games yet to be played
+- **played_games** [list[Game]]: List of completed games
 - **winner** [str, optional]: Name of the tournament winner  
 - **num_teams**: Count of teams
 - **num_rounds** [int]: Total number of rounds in the tournament, assuming a single-elimination tournament
@@ -33,15 +33,11 @@ Returns the list of unplayed games, optionally filtering by round.
 
 ###### Create a Tournament instance
 ```python
-import pandas as pd
-
 from march_madness.tournament import Tournament
 from march_madness.matchup import ncaa_initial_matchups, ncaa_round_matchups
 
-teams = pd.read_csv("data/march_madness_2024.csv")
-
-tournament = Tournament(teams=teams, 
-                        initial_matchup_strategy=ncaa_initial_matchups, 
+tournament = Tournament(team_data="data/march_madness_2024.csv", 
+                        initial_matchup_strategy=ncaa_initial_matchups,
                         round_matchup_strategy=ncaa_round_matchups)
 ```
 
@@ -62,9 +58,9 @@ Runs Monte Carlo simulations of a tournament.
 #### Parameters
 - **num_trials** [int]: Number of simulations to run
 - **tournament_class** [type] = `Tournament`: Tournament class to simulate
-- **tournament_params** [dict]: Params to initialize the tournament with
-- **prediction_strategy** [Callable]: Generates gamer winner predictions
-- **prediction_strategy_kwargs** [dict] = {}: Key word arguments to pass to the prediction strategy function
+- **tournament_params** [dict]: Tournament initialization params
+- **prediction_strategy** [Callable]: Generates game winner predictions
+- **prediction_strategy_params** [dict] = {}: Params to pass to the prediction strategy function
 - **result_path** [str | Path] = None: Path to cache simulation results as csv
 - **seed** [int] = 42: Ensures reproducibility across trials by seeding `np.random.Generator`. New seeds are generated for each prediction, creating stochasticity within trials.
 
@@ -77,7 +73,8 @@ Runs Monte Carlo simulations of a tournament.
 Runs multiple tournament simulations and logs results.
 
     - **resume** [bool]: If true, loads previous trials in `self.result_path` and ensures all new trial seeds are unique. Appends to existing csv.
-    - **verbose** [bool]: Toggles `tqdm` progress bar visibility, with results logged at the game level
+    - **verbose** [bool]: Toggles `tqdm` progress bar visibility
+    - **pbar_level** [str]: "game" or "trial"; controls the level of detail included in the pbar postfix
 
 - **to_dataframe**()  
 Returns the results as a Pandas DataFrame.
@@ -91,7 +88,9 @@ from march_madness.tournament import Tournament, TournamentSimulator
 
 simulator = TournamentSimulator(num_trials=100,
                                 tournament_class=Tournament,
-                                tournament_params={"teams": teams},
+                                tournament_params={
+                                    "team_data": "data/march_madness_2024.csv"
+                                },
                                 prediction_strategy=team1_always_wins,
                                 seed=42)
 
@@ -106,9 +105,11 @@ from march_madness.prediction import llm_prediction
 
 simulator = TournamentSimulator(num_trials=100,
                                 tournament_class=Tournament,
-                                tournament_params={"teams": teams},
+                                tournament_params={
+                                    "team_data": "data/march_madness_2024.csv"
+                                },
                                 prediction_strategy=llm_prediction,
-                                prediction_strategy_kwargs={
+                                prediction_strategy_params={
                                     "model_name": "llama3.2:1b"
                                 },
                                 result_path="results/llam3_2-1b.csv", # Add a cache directory

@@ -12,15 +12,11 @@ Detailed documentation available [here](https://github.com/harrisonfloam/march-m
 
 ###### Create a Tournament instance
 ```python
-import pandas as pd
-
 from march_madness.tournament import Tournament
 from march_madness.matchup import ncaa_initial_matchups, ncaa_round_matchups
 
-teams = pd.read_csv("data/march_madness_2024.csv")
-
-tournament = Tournament(teams=teams, 
-                        initial_matchup_strategy=ncaa_initial_matchups, 
+tournament = Tournament(team_data="data/march_madness_2024.csv", 
+                        initial_matchup_strategy=ncaa_initial_matchups,
                         round_matchup_strategy=ncaa_round_matchups)
 ```
 
@@ -40,7 +36,9 @@ from march_madness.tournament import Tournament, TournamentSimulator
 
 simulator = TournamentSimulator(num_trials=100,
                                 tournament_class=Tournament,
-                                tournament_params={"teams": teams},
+                                tournament_params={
+                                    "team_data": "data/march_madness_2024.csv"
+                                },
                                 prediction_strategy=team1_always_wins,
                                 seed=42)
 
@@ -55,9 +53,11 @@ from march_madness.prediction import llm_prediction
 
 simulator = TournamentSimulator(num_trials=100,
                                 tournament_class=Tournament,
-                                tournament_params={"teams": teams},
+                                tournament_params={
+                                    "team_data": "data/march_madness_2024.csv"
+                                },
                                 prediction_strategy=llm_prediction,
-                                prediction_strategy_kwargs={
+                                prediction_strategy_params={
                                     "model_name": "llama3.2:1b"
                                 },
                                 result_path="results/llam3_2-1b.csv", # Add a cache directory
