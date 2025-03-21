@@ -13,10 +13,12 @@ from march_madness.types import Team, Matchup, Prediction
 
 
 class Game:
-    def __init__(self, team1: Team, team2: Team, round_number: int, game_id: Dict = None):
+    def __init__(self, team1: Team, team2: Team, round_number: int, game_id: int = None):
         for team in (team1, team2):
             if "team" not in team:
                 raise ValueError(f"Team dictionary must contain at least key 'team'. Found keys: {team.keys()}")
+        if not isinstance(game_id, (int, type(None))):
+            raise ValueError(f"game_id must be an integer or None, got {type(game_id)}.")
         
         self.team1 = team1["team"]
         self.team2 = team2["team"]
@@ -34,7 +36,7 @@ class Game:
         self.winner_details = self.team1_details if self.winner == self.team1 else self.team2_details
 
 class Tournament:
-    def __init__(self, teams: pd.DataFrame | List[Dict], 
+    def __init__(self, team_data: pd.DataFrame | Path | str | List[Dict], 
                  initial_matchup_strategy: Callable[["Tournament"], List[Matchup]] = ncaa_initial_matchups,
                  round_matchup_strategy: Callable[["Tournament"], List[Matchup]] = ncaa_round_matchups):
         """
@@ -45,7 +47,7 @@ class Tournament:
             initial_matchup_strategy: A function that determines first-round matchups.
             round_matchup_strategy: A function that determines matchups in later rounds.
         """
-        self.teams = self._process_teams(teams) #TODO: confusing that param teams isn't the same as attr teams
+        self.teams = self._load_teams(team_data)
         self.initial_matchup_strategy = initial_matchup_strategy
         self.round_matchup_strategy = round_matchup_strategy
         
@@ -53,7 +55,7 @@ class Tournament:
         self.played_games = []
         self.winner = None
         
-        self.num_teams = len(teams)
+        self.num_teams = len(self.teams)
         self.num_rounds = int(log2(self.num_teams)) # Single elimination tournament
         self.num_games = self.num_teams - 1
         
@@ -76,15 +78,19 @@ class Tournament:
             if missing_fields:
                 raise ValueError(f"Missing required fields {missing_fields} in team entry: {team}")
 
-                
-    def _process_teams(self, teams: Any) -> Dict[str, Team]:
+    def _load_teams(self, team_data) -> Dict[str, Team]:
         """Converts a DataFrame or list of dicts into a standard format."""
-        if isinstance(teams, pd.DataFrame):
-            teams = teams.to_dict(orient="records")  # Convert DataFrame to list of dicts
-        if isinstance(teams, list) and all(isinstance(t, dict) for t in teams):
-            return {team["team"]: team for team in teams}
-        else:
-            raise ValueError("Teams must be provided as a DataFrame or a list of dictionaries.")
+        if not isinstance(team_data, (pd.DataFrame, str, Path, list)):
+            raise ValueError(f"team_data must be a DataFrame, file path, or list of dicts. Found {type(team_data)}.")
+        # If team_data is a file path, load the CSV
+        if isinstance(team_data, (str, Path)):
+            team_data = pd.read_csv(team_data)
+        # If team_data is a df, convert it to a list of dicts
+        if isinstance(team_data, pd.DataFrame):
+            team_data = team_data.to_dict(orient="records")
+        # Finally: map team name to each team dict
+        if isinstance(team_data, list) and all(isinstance(t, dict) for t in team_data):
+            return {team["team"]: team for team in team_data}
 
     def update_game_result(self, game: Game, winner: str):
         """Marks the winner of a game and builds the next round when all games are complete."""
@@ -127,7 +133,9 @@ class Tournament:
 
         self.current_round += 1 # Advance round counter
         matchups = self.round_matchup_strategy(self)
-
+        if not matchups:
+            raise ValueError("Round matchup strategy did not return any games. Check the strategy function.")
+        
         # Create new games for the next round
         new_games = [Game(team1, team2, self.current_round, game_id) for team1, team2, game_id in matchups]
         self.unplayed_games.extend(new_games)
